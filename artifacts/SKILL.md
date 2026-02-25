@@ -2,8 +2,9 @@
 name: artifacts
 description: Update the standard Obsidian project artifact files (plan.md, design.md, problems.md, log.md, resources.md) based on the current session's work.
 argument-hint: "[file-or-description]"
-disable-model-invocation: true
 ---
+
+# Artifacts
 
 Update the standard project artifact files based on the current session's work. The five primary artifacts are:
 

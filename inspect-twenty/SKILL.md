@@ -2,7 +2,6 @@
 name: inspect-twenty
 description: Inspect a Twenty CRM object type by querying the live API. Use when investigating Twenty data structure, field availability, data quality, or record counts.
 argument-hint: "[object-name]"
-disable-model-invocation: true
 ---
 
 Inspect a Twenty CRM object by running the bundled analysis script, then interpret and contextualize the results.
