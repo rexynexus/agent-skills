@@ -14,6 +14,26 @@ Update the standard project artifact files based on the current session's work. 
 - **log.md** - Chronological session log (newest first)
 - **resources.md** - Reference links, API docs, external material
 
+## Folder structure
+
+```
+Artifacts/
+├── plan.md              ← core artifacts at root
+├── design.md
+├── log.md
+├── problems.md
+├── resources.md
+├── _README.md
+└── <subfolder>/         ← project-specific outputs in subfolders
+    ├── analysis-foo.md
+    ├── offsite-guide.md
+    └── ...
+```
+
+Core artifact files (plan, design, log, problems, resources) always live at the `Artifacts/` root. All other agent-produced files (analyses, guides, draft deliverables, investigation notes) go in a subfolder. Subfolder names should be descriptive of the content grouping (e.g. `Analysis/`, `Drafts/`, `Research/`). If no obvious grouping exists, use the project name or a generic `Working/` subfolder.
+
+This keeps the core files immediately discoverable while preventing the `Artifacts/` root from becoming cluttered with project-specific outputs.
+
 ## Arguments
 
 `$ARGUMENTS` can be:
@@ -27,7 +47,7 @@ Update the standard project artifact files based on the current session's work. 
 
 Find the project's `Artifacts/` folder. Check these locations in order:
 - Any directory in the current workspace or additional working directories that contains an `Artifacts/` subfolder
-- Look for sibling files like `plan.md`, `log.md`, `design.md` as confirmation
+- Look for core files like `plan.md`, `log.md`, `design.md` at the `Artifacts/` root as confirmation
 
 If multiple `Artifacts/` folders exist across working directories, identify which project is relevant from the current session's context. If ambiguous, ask the user.
 
@@ -74,6 +94,8 @@ Ensure frontmatter is correct on every file touched:
 - `last-modified` is set to today's date
 
 If a file does not yet exist and the session produced content for it, create it with full frontmatter per the `_Agents/README.md` conventions. Check sibling files for the correct project tag.
+
+When creating non-core files (analyses, drafts, investigations), place them in an appropriate subfolder within `Artifacts/`, not at the root. Create the subfolder if it doesn't exist.
 
 ### 6. Report
 
