@@ -1,0 +1,14 @@
+{
+  "name": "rexynexus",
+  "owner": {
+    "name": "rexynexus"
+  },
+  "plugins": [
+    {
+      "name": "agent-skills",
+      "source": "./",
+      "description": "Personal agent skills",
+      "version": "1.0.0"
+    }
+  ]
+}
