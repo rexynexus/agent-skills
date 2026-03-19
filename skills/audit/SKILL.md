@@ -170,4 +170,4 @@ Prioritized action items. If external skills need installation, list the install
 
 ## Step 8: Optionally update artifacts
 
-If the project has an `Artifacts/` folder, offer to invoke `/artifacts problems` to record findings in `problems.md`.
+If the project has an artifacts folder, offer to invoke `/artifacts problems` to record findings in `problems.md`.
