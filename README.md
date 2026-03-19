@@ -1,36 +1,31 @@
-# agent-skills
+Agent skills by rexynexus.
 
-Custom skills for Claude Code. Each subdirectory contains a `SKILL.md` that defines the skill's name, trigger conditions, and instructions.
+These skills follow the [Agent Skills specification](https://agentskills.io/specification) so they can be used by any skills-compatible agent, including Claude Code and Codex CLI.
+
+## Installation
+
+### Marketplace
+
+```
+/plugin marketplace add rexynexus/agent-skills
+/plugin install agent-skills@rexynexus
+```
+
+### Manually
+
+#### Claude Code
+
+Copy a skill directory into `~/.claude/skills/` (user-global) or `<project>/.claude/skills/` (project-scoped). See more in the [official Claude Skills documentation](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview).
+
+#### Codex CLI
+
+Copy the skill directories into your Codex skills path (typically `~/.codex/skills`). See the [Agent Skills specification](https://agentskills.io/specification) for the standard skill format.
 
 ## Skills
 
 | Skill | Description |
 |-------|-------------|
 | [artifacts](artifacts/) | Update standard Obsidian project artifact files (plan.md, design.md, problems.md, log.md, resources.md) based on the current session's work |
-| [audit](audit/) | Security and code quality audit orchestrator. Assesses the codebase, selects applicable skills from a registry, presents a plan, then invokes each sequentially. Depends on external skills from [trailofbits/skills](https://github.com/trailofbits/skills) (see [audit/README.md](audit/README.md) for install instructions and the full skill registry) |
+| [audit](audit/) | Security and code quality audit orchestrator. Depends on external skills from [trailofbits/skills](https://github.com/trailofbits/skills) (see [audit/README.md](audit/README.md)) |
 | [inspect-twenty](inspect-twenty/) | Inspect a Twenty CRM object type by querying the live API for metadata and data analysis |
 | [obsidian-charts](obsidian-charts/) | Create and edit charts in Obsidian using the Charts plugin (bar, line, pie, doughnut, radar, polarArea, scatter, bubble, sankey) |
-
-## Installation
-
-Copy a skill directory into `~/.claude/skills/` (user-global) or `<project>/.claude/skills/` (project-scoped):
-
-```bash
-cp -r obsidian-charts ~/.claude/skills/
-```
-
-Or install all:
-
-```bash
-cp -r */ ~/.claude/skills/
-```
-
-## Structure
-
-Each skill follows the [Agent Skills specification](https://agentskills.io/specification):
-
-```
-skill-name/
-  SKILL.md      # Frontmatter (name, description) + full skill prompt
-  README.md     # Optional usage docs
-```
