@@ -25,7 +25,7 @@ Copy the skill directories into your Codex skills path (typically `~/.codex/skil
 
 | Skill | Description |
 |-------|-------------|
-| [artifacts](artifacts/) | Update standard Obsidian project artifact files (plan.md, design.md, problems.md, log.md, resources.md) based on the current session's work |
-| [audit](audit/) | Security and code quality audit orchestrator. Depends on external skills from [trailofbits/skills](https://github.com/trailofbits/skills) (see [audit/README.md](audit/README.md)) |
-| [inspect-twenty](inspect-twenty/) | Inspect a Twenty CRM object type by querying the live API for metadata and data analysis |
-| [obsidian-charts](obsidian-charts/) | Create and edit charts in Obsidian using the Charts plugin (bar, line, pie, doughnut, radar, polarArea, scatter, bubble, sankey) |
+| [artifacts](skills/artifacts/) | Update standard Obsidian project artifact files (plan.md, design.md, problems.md, log.md, resources.md) based on the current session's work |
+| [audit](skills/audit/) | Security and code quality audit orchestrator. Depends on external skills from [trailofbits/skills](https://github.com/trailofbits/skills) (see [audit/README.md](skills/audit/README.md)) |
+| [inspect-twenty](skills/inspect-twenty/) | Inspect a Twenty CRM object type by querying the live API for metadata and data analysis |
+| [obsidian-charts](skills/obsidian-charts/) | Create and edit charts in Obsidian using the Charts plugin (bar, line, pie, doughnut, radar, polarArea, scatter, bubble, sankey) |
