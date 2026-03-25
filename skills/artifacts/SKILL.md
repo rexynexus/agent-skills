@@ -122,8 +122,7 @@ Edit each file. Preserve existing content. Follow the file-specific conventions 
 Ensure frontmatter is correct on every file touched:
 - `status` reflects current state
 - `summary` is accurate and under ~80 chars
-- `agent` field is set (use `Claude` for Claude Code sessions)
-- `editors` list is updated if a different agent originally created the file
+- `editors` list is updated if a new agent has handled the file from what is already listed
 - `last-modified` is set to today's date
 
 If a file does not yet exist and the session produced content for it, create it with full frontmatter per the `_Agents/README.md` conventions. Check sibling files for the correct project tag.
@@ -166,7 +165,11 @@ Content...
 
 ## YYYY-MM-DD (previous day)
 
-### Session 1: Short Descriptor
+### Session L: Short Descriptor
+
+Content...
+
+### Session L-1: Short Descriptor
 
 Content...
 ```
@@ -176,6 +179,7 @@ Rules:
 - `###` is the session heading under that date. Numbered, newest first within the day.
 - `---` horizontal rule between days for visual separation.
 - If today's date heading already exists, add the new session under it (as the first `###`). Do NOT create a duplicate `##` for the same date.
+- A new day starts a new session count. 
 
 ### log.md entry content
 
