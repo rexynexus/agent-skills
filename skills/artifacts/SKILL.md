@@ -42,7 +42,9 @@ If multiple `Artifacts/` folders exist across working directories, identify whic
 
 ### 2. Read the _Agents/README.md conventions
 
-If `_Agents/README.md` exists in the Obsidian vault root (typically two levels above `Artifacts/`), read it - unless already read in this session.
+Walk up from the discovered `Artifacts/` folder until you find a sibling `_Agents/` folder. That folder lives at the Obsidian vault root (vault depth varies - the `_Agents/` folder is the anchor, not a fixed number of parents). Read `_Agents/README.md` from there - unless already read in this session.
+
+Discovery fallback: If Glob does not find `_Agents/README.md` (Windows Glob behavior with underscore-prefixed folders is inconsistent), fall back to a Bash `ls`-based walk. List each parent directory level-by-level until a folder containing `_Agents/` appears. If you reach a drive root or the user's home directory without finding it, halt and ask the user to confirm the vault location. Do NOT proceed without the conventions doc - the skill's output schema depends on it.
 
 ### 3. Read artifacts (targeted)
 
@@ -71,11 +73,14 @@ Read each artifact using the minimum necessary to establish context:
 
 ### 4. Summarize context
 
+Before writing the summary, compare plan.md's active headings against log.md's `#### Completed Plan Items` sections. If plan.md still contains items that log.md shows as completed, the plan has not been pruned per the lifecycle rules. Surface this as a "plan drift" note in the summary. Do not auto-fix - the user decides whether to clean up.
+
 Present a brief summary of the project state:
 - Active sprint and its status (what's done, what's pending)
 - Key open problems relevant to the session
 - What the last 1-2 sessions accomplished
 - Any pending next steps from the last session
+- Plan drift warning, if detected
 
 ## Steps: Save Mode
 
@@ -119,13 +124,23 @@ For each file that needs updating, read only the portion required to make the ed
 
 Edit each file. Preserve existing content. Follow the file-specific conventions below.
 
-Ensure frontmatter is correct on every file touched:
-- `status` reflects current state
-- `summary` is accurate and under ~80 chars
-- `editors` list is updated if a new agent has handled the file from what is already listed
-- `last-modified` is set to today's date
+Ensure frontmatter is correct on every file touched. Required fields per `_Agents/README.md`:
+- `tags` - must include `project/<kebab-case-identifier>`. Check sibling files for the project's existing tag.
+- `status` - one of `active`, `blocked`, `completed`, `superseded`. Reflects current state.
+- `summary` - quoted string, max ~80 chars. Describes file contents, not the project.
+- `editors` - list of agent names (e.g. `Claude-Opus-4.6`, `Codex-5.3`). Add your model if not already listed; do not remove prior entries.
+- `created` - ISO date `YYYY-MM-DD`. Set on file creation, never changed afterward.
+- `last-modified` - ISO date `YYYY-MM-DD`. Set to today's date on every edit.
 
-If a file does not yet exist and the session produced content for it, create it with full frontmatter per the `_Agents/README.md` conventions. Check sibling files for the correct project tag.
+If a file does not yet exist and the session produced content for it, create it with full frontmatter. Starter skeletons with the canonical headings are provided in `skills/artifacts/templates/` - copy the relevant template and fill in the content. Check sibling files in the Artifacts folder for the correct project tag.
+
+If `_README.md` does not exist in the current Artifacts folder, create it with this exact content:
+
+```
+Agent workspace for this project. See [[_Agents/README]] for conventions.
+```
+
+This pointer note signals to any future agent reading the folder that the vault-level conventions doc is authoritative.
 
 ### 6. Report
 
@@ -215,4 +230,12 @@ This keeps plan.md lean and scannable. The full history of what was planned and 
 
 ### problems.md
 
-Each entry has a P-number identifier (e.g. P49). Check existing entries to determine the next available number. Include: description, impact, priority, planned fix or resolution date.
+Entries use a letter-prefixed identifier scoped by type:
+
+- `Q` - Open Questions (decisions needed, information gaps)
+- `R` - Design Risks (known risks with severity, likelihood, mitigation)
+- `P` - Problems (bugs, blockers, technical debt)
+
+Each series numbers independently. Check existing entries to determine the next available number within the relevant series. Include: description, impact, priority, planned fix or resolution date. Risks additionally include severity, likelihood, and mitigation.
+
+Move resolved items to a `## Resolved` section at the bottom with a one-line resolution note and date. Do not delete them - the record of how a question was answered or a risk was retired is load-bearing context for future agents.
