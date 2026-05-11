@@ -37,7 +37,8 @@ The config file is JSON with this structure:
         "feature_area": "<Feature Area value>",
         "feature_prefix": "<2-3 char prefix, e.g. RC>",
         "problems": "<vault-relative path to problems.md>",
-        "plan": "<vault-relative path to plan.md>"
+        "plan": "<vault-relative path to plan.md>",
+        "log": "<vault-relative path to log.md>"
       }
     ]
   },
@@ -193,11 +194,11 @@ Only update if something material changed (priority, title, description content)
 
 ### Plan item disappeared (ref in task_map but heading gone from plan.md)
 
-Check the feature's log.md for a `#### Completed Plan Items` section containing matching heading text. If found:
-- Mark Wrike task Completed
-- Add session context to description
+Read the feature's log file (from `tracked_files[].log` in config). Search the most recent entries for a `#### Completed Plan Items` section containing matching heading text. If found:
+- Mark Wrike task Completed (config.statuses.completed)
+- Extract the session narrative from the same log entry and append to the Wrike task description as a completion summary
 
-If NOT found in log.md, leave the task as-is. It may have been restructured.
+If NOT found in the log, leave the task as-is. It may have been restructured.
 
 ## Step 6: Update State
 

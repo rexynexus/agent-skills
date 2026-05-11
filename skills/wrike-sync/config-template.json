@@ -21,7 +21,8 @@
         "feature_area": "My Feature",
         "feature_prefix": "MF",
         "problems": "path/to/problems.md",
-        "plan": "path/to/plan.md"
+        "plan": "path/to/plan.md",
+        "log": "path/to/log.md"
       }
     ]
   },
