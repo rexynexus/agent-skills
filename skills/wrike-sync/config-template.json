@@ -1,6 +1,7 @@
 {
   "config": {
     "obsidian_vault": "MyVault",
+    "obsidian_cli": "C:\\Users\\you\\AppData\\Local\\Programs\\Obsidian\\Obsidian.com",
     "wrike_project_id": "",
     "wrike_space_id": "",
     "default_assignee": "",

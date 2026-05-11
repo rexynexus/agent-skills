@@ -17,6 +17,7 @@ The config file is JSON with this structure:
 {
   "config": {
     "obsidian_vault": "<vault name>",
+    "obsidian_cli": "<full path to obsidian CLI executable, e.g. C:\\Users\\you\\AppData\\Local\\Programs\\Obsidian\\Obsidian.com>",
     "wrike_project_id": "<project ID>",
     "wrike_space_id": "<space ID>",
     "default_assignee": "<contact ID>",
@@ -52,9 +53,11 @@ If the config file does not exist or is missing the `config` key, report the err
 
 ## Step 0: Obsidian Gate
 
+Use the CLI path from `config.obsidian_cli` (fall back to bare `obsidian` if not set). All Obsidian CLI commands in this skill use this path.
+
 Run:
 ```
-obsidian vault="<config.obsidian_vault>" sync:status
+"<config.obsidian_cli>" vault="<config.obsidian_vault>" sync:status
 ```
 
 If this command fails (exit code != 0), Obsidian is not running. Log "Wrike sync skipped: Obsidian not running." and exit immediately.
@@ -72,7 +75,7 @@ If `last_sync` is null, treat all tracked files as new (no previous sync).
 For each entry in `config.tracked_files`, check both the `problems` and `plan` paths:
 
 ```
-obsidian vault="<config.obsidian_vault>" history path="<path>"
+"<config.obsidian_cli>" vault="<config.obsidian_vault>" history path="<path>"
 ```
 
 This returns output like:
