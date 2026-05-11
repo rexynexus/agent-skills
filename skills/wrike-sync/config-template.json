@@ -1,0 +1,31 @@
+{
+  "config": {
+    "obsidian_vault": "MyVault",
+    "wrike_project_id": "",
+    "wrike_space_id": "",
+    "default_assignee": "",
+    "custom_fields": {
+      "feature_area": "",
+      "type": ""
+    },
+    "statuses": {
+      "not_started": "",
+      "in_progress": "",
+      "blocked": "",
+      "completed": "",
+      "on_hold": "",
+      "cancelled": ""
+    },
+    "tracked_files": [
+      {
+        "feature_area": "My Feature",
+        "feature_prefix": "MF",
+        "problems": "path/to/problems.md",
+        "plan": "path/to/plan.md"
+      }
+    ]
+  },
+  "last_sync": null,
+  "files": {},
+  "task_map": {}
+}
