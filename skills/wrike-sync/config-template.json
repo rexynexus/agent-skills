@@ -5,6 +5,7 @@
     "wrike_project_id": "",
     "wrike_space_id": "",
     "default_assignee": "",
+    "owner_initials": "",
     "custom_fields": {
       "feature_area": "",
       "type": ""
