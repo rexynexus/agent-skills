@@ -1,7 +1,7 @@
 ---
 name: artifacts
-description: Load project context or save session work to the standard Obsidian artifact files (plan.md, design.md, problems.md, log.md, resources.md).
-argument-hint: "[load | save | write <file> | description]"
+description: Load project context or save session work to the standard Obsidian artifact files (plan.md, design.md, problems.md, log.md, resources.md). Also manages Claude Code settings snapshots via the settings subcommand.
+argument-hint: "[load | save | write <file> | settings backup|restore|audit | description]"
 ---
 
 # Artifacts
@@ -25,6 +25,9 @@ Load project context at session start, or save session work to the standard arti
 | `/artifacts write log` | write | Update a single named artifact only |
 | `/artifacts write plan` | write | Update a single named artifact only |
 | `/artifacts added X, fixed Y` | save | Save with description as context hint |
+| `/artifacts settings backup` | settings | Snapshot current Claude Code config to `_Agents/Settings/` |
+| `/artifacts settings restore` | settings | Apply snapshot to current machine with path adaptation |
+| `/artifacts settings audit` | settings | Diff current config vs last snapshot, flag drift |
 | `/artifacts` (no arg, no prior work) | load | Auto-detect: no session work done yet = load |
 | `/artifacts` (no arg, work done) | save | Auto-detect: session work exists = save |
 
@@ -158,6 +161,183 @@ After updating, provide a summary:
 Goal: Update a single named artifact. Follows the same read and edit patterns as Save Mode, but only for the specified file.
 
 Parse the file name from `$ARGUMENTS` (e.g. `write log`, `write plan`, `write design`). Apply the same targeted read and edit steps from Save Mode for that file only. Report what changed.
+
+## Steps: Settings Mode
+
+Goal: Manage Claude Code configuration as a versioned, portable snapshot stored in the Obsidian vault. The `_Agents/` directory is itself an artifacted system for settings - it gets its own `Artifacts/` folder with log.md to track configuration changes.
+
+Settings mode uses `_Agents/Settings/` as the snapshot store and `_Agents/Artifacts/` for its own artifact files (creating both directories if they don't exist).
+
+Parse the subcommand from `$ARGUMENTS`: `settings backup`, `settings restore`, or `settings audit`.
+
+### Snapshot structure
+
+```
+_Agents/
+├── Artifacts/              <- _Agents' own artifact files
+│   └── log.md              <- settings changes logged here
+├── Settings/               <- the snapshot
+│   ├── manifest.json       <- metadata, plugin list, marketplace list
+│   ├── CLAUDE.md           <- global prompt copy
+│   ├── settings.json       <- global settings copy
+│   ├── settings.local.json <- local settings copy
+│   ├── rules/              <- all rule files
+│   └── skills/             <- custom skills only (not plugin cache)
+```
+
+### Snapshot scope
+
+**Included:**
+- `~/.claude/CLAUDE.md`
+- `~/.claude/settings.json`
+- `~/.claude/settings.local.json`
+- `~/.claude/rules/*.md` (all rule files)
+- `~/.claude/skills/*/` (custom skills only - directories directly under `skills/`, not plugin cache)
+
+**Excluded:**
+- `~/.claude/plugins/` (reinstallable from manifest)
+- `~/.claude/projects/` (project memory - per-project, restored as projects are opened)
+- `~/.claude/file-history/` (ephemeral)
+- `~/.claude/scheduled-tasks/` (excluded from snapshot scope)
+
+### Settings Backup
+
+1. **Locate _Agents directory.** Find `_Agents/` in the Obsidian vault. In the current workspace or additional working directories, look for a directory named `_Agents` or containing `_Agents/README.md`. If not found, check parent directories of the current workspace up to two levels.
+
+2. **Create directories if needed.** Ensure `_Agents/Settings/` and `_Agents/Settings/rules/` and `_Agents/Settings/skills/` exist. Ensure `_Agents/Artifacts/` exists.
+
+3. **Read and copy config files.** For each file in the snapshot scope:
+   - Read from `~/.claude/` (resolve `~` to the actual user profile directory)
+   - Write to the corresponding location under `_Agents/Settings/`
+   - For `rules/`: copy all `*.md` files from `~/.claude/rules/`
+   - For `skills/`: copy each subdirectory of `~/.claude/skills/` that is NOT under a `plugins/` or `cache/` path. These are custom skills (e.g. `humanizer/`). Copy the full directory contents including any `.git/` subdirectory.
+
+4. **Generate manifest.json.** Read `settings.json` and extract:
+
+```json
+{
+  "snapshot_date": "YYYY-MM-DD",
+  "machine_username": "<current Windows username from path>",
+  "claude_home": "<resolved ~/.claude/ path>",
+  "plugins": {
+    "<marketplace-name>": ["<plugin-name>", "..."]
+  },
+  "marketplaces": {
+    "<marketplace-name>": "<repo>"
+  },
+  "config_summary": {
+    "model": "<from settings.json>",
+    "effort": "<from settings.json>",
+    "theme": "<from settings.json>",
+    "rule_count": "<number of rule files>",
+    "custom_skill_count": "<number of custom skill directories>"
+  }
+}
+```
+
+Group plugins by marketplace using the `enabledPlugins` keys (format: `name@marketplace`). Extract marketplace repos from `extraKnownMarketplaces`.
+
+5. **Log to _Agents/Artifacts/log.md.** Create the file if it doesn't exist (with standard frontmatter, `tags: [project/agents-settings]`). Prepend an entry following the standard log.md conventions:
+
+```markdown
+## YYYY-MM-DD
+
+### Session 1: Settings Backup
+
+Snapshotted Claude Code configuration to `_Agents/Settings/`.
+
+- **Config files:** CLAUDE.md, settings.json, settings.local.json
+- **Rules:** [count] files ([list names])
+- **Custom skills:** [list names]
+- **Plugins:** [count] across [count] marketplaces
+```
+
+6. **Report.** Summarize what was captured:
+   - Files copied and their sizes
+   - Plugin/marketplace inventory
+   - Path to the snapshot
+
+### Settings Restore
+
+1. **Locate the snapshot.** Find `_Agents/Settings/manifest.json`. If it doesn't exist, report that no snapshot is available and stop.
+
+2. **Read the manifest.** Extract `machine_username` from the snapshot to determine the old username for path replacement.
+
+3. **Detect current environment.** Determine the current user's home directory and username. The replacement pattern is: every occurrence of the old username in file contents gets replaced with the current username. Apply this to all text files being restored.
+
+4. **Preview changes.** Before writing anything, report:
+   - Files that will be written to `~/.claude/`
+   - Path replacements that will be applied (old username -> new username)
+   - Settings keys that differ between snapshot and current config (if current config exists)
+   - Plugins that need installing (from manifest, not currently installed)
+   - Marketplaces that need registering
+
+5. **Ask for confirmation.** Present the preview and wait for user approval before writing any files.
+
+6. **Apply the restore.** For each file in the snapshot:
+   - Read from `_Agents/Settings/`
+   - Apply path replacements (username substitution in file contents)
+   - Write to `~/.claude/`
+   - For `rules/`: write all `*.md` files to `~/.claude/rules/` (create directory if needed)
+   - For `skills/`: copy each subdirectory to `~/.claude/skills/`
+
+7. **Report plugin install commands.** Do NOT run these automatically. Output them grouped by marketplace:
+
+```
+Marketplaces to register:
+  claude plugin add-marketplace trailofbits --source github --repo trailofbits/skills
+
+Plugins to install:
+  claude plugin install github
+  claude plugin install superpowers
+  claude plugin install supply-chain-risk-auditor@trailofbits
+  ...
+```
+
+8. **Log to _Agents/Artifacts/log.md.** Prepend an entry documenting the restore: what was applied, what path replacements were made, what plugins still need manual install.
+
+### Settings Audit
+
+1. **Locate the snapshot.** Find `_Agents/Settings/manifest.json`. If it doesn't exist, report that no snapshot is available (suggest running backup first) and stop.
+
+2. **Read the snapshot manifest and config files.** Load the snapshotted `settings.json`, `settings.local.json`, `CLAUDE.md`, and list of rule/skill files.
+
+3. **Read current config files.** Load the live versions from `~/.claude/`.
+
+4. **Diff and report.** Compare each config area and report findings:
+
+**Settings changes:**
+- Keys added to current that aren't in snapshot
+- Keys removed from current that were in snapshot
+- Values that changed (model, effort, theme, etc.)
+
+**Permission drift:**
+- New permissions added since snapshot (highlight one-off session artifacts like specific `Bash(docker run ...)` commands)
+- Permissions removed since snapshot
+
+**Rules:**
+- New rule files added
+- Rule files removed
+- Rule files with content changes (report which ones changed, don't dump full diffs)
+
+**Skills:**
+- New custom skills added
+- Custom skills removed
+- Skills with changes (check if directory contents differ)
+
+**Plugins:**
+- Plugins enabled in current but not in snapshot
+- Plugins in snapshot but not enabled in current
+
+**CLAUDE.md:**
+- Report whether the file changed since snapshot (yes/no with line count delta)
+
+5. **Suggest actions.** Based on the diff:
+   - If permissions accumulated: suggest running backup to capture new baseline, or list candidates for cleanup (one-off commands that look like session artifacts)
+   - If rules changed: suggest backup to capture the current state
+   - If plugins diverged: note which direction (snapshot is stale vs. current is missing plugins)
+
+6. **Log to _Agents/Artifacts/log.md** if any significant drift was found. Skip the log entry if current matches snapshot exactly.
 
 ## File-Specific Conventions
 
