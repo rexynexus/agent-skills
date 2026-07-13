@@ -3,13 +3,15 @@
 Inspect a Twenty CRM object type via both the REST data API and the
 REST metadata API.
 
-- Metadata API (/rest/metadata/objects, /rest/metadata/fields) provides
-  authoritative field definitions: type, label, required, relation targets.
-- Data API (/rest/{object}) provides actual record data for sample values,
+- Metadata API (/rest/metadata/objects, field definitions inline on each
+  object) provides authoritative field definitions: type, label, required,
+  relation type and join column. Relation TARGET objects are not exposed
+  via REST metadata on current Twenty versions.
+- Data API (/rest/{plural}) provides actual record data for sample values,
   null rates, CURRENCY decoding, and anomaly detection.
 
 Usage:
-    python inspect.py <object-name> [--env-file PATH] [--metadata-only] [--data-only]
+    python inspect_twenty.py <object-name> [--env-file PATH] [--metadata-only] [--data-only]
 
 Requires: httpx
 Optional: python-dotenv
@@ -94,13 +96,21 @@ def _rate_limited_get(client, url, api_key, params=None, last_request_time_ref=N
     return resp
 
 
-def fetch_all(client, api_key, base_url, object_name, timer=None):
-    """Fetch all non-deleted records with cursor pagination."""
+def fetch_all(client, api_key, base_url, object_name, timer=None, max_records=None):
+    """Fetch non-deleted records with cursor pagination.
+
+    Returns (records, total_count). total_count is the API-reported
+    totalCount when available, else None. Fetching stops once max_records
+    is reached so large objects (e.g. message with 300k+ rows) stay
+    tractable; the report states when analysis covers a partial sample.
+    Returns (None, None) when the object route does not exist.
+    """
     if timer is None:
         timer = [0.0]
     url = f"{base_url}/{object_name}"
     params = {"limit": BATCH_SIZE}
     all_records = []
+    total_count = None
 
     while True:
         resp = _rate_limited_get(client, url, api_key, params, timer)
@@ -108,10 +118,14 @@ def fetch_all(client, api_key, base_url, object_name, timer=None):
         if resp is None:
             print("ERROR: Exhausted retries fetching records", file=sys.stderr)
             break
-        if resp.status_code == 404:
-            return None
+        if resp.status_code in (400, 404):
+            # Twenty returns 400 (not 404) for unknown REST object routes,
+            # e.g. a singular name where the endpoint is plural-only.
+            return None, None
         resp.raise_for_status()
         body = resp.json()
+        if body.get("totalCount") is not None:
+            total_count = body["totalCount"]
 
         data = body.get("data", body)
         if isinstance(data, dict):
@@ -131,13 +145,17 @@ def fetch_all(client, api_key, base_url, object_name, timer=None):
 
         all_records.extend(r for r in records if not r.get("deletedAt"))
 
+        if max_records is not None and len(all_records) >= max_records:
+            all_records = all_records[:max_records]
+            break
+
         page_info = body.get("pageInfo", {})
         if page_info.get("hasNextPage") and page_info.get("endCursor"):
             params["starting_after"] = page_info["endCursor"]
         else:
             break
 
-    return all_records
+    return all_records, total_count
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +253,12 @@ def resolve_object_metadata(meta_objects, meta_fields, object_name):
 
     if obj_def is None:
         return None, []
+
+    # Current Twenty versions return field definitions inline on each object;
+    # older versions require grouping /rest/metadata/fields by objectMetadataId.
+    inline_fields = obj_def.get("fields")
+    if inline_fields is not None:
+        return obj_def, inline_fields
 
     obj_id = obj_def.get("id")
     field_defs = [
@@ -533,6 +557,15 @@ def detect_schema_drift(data_fields, meta_field_defs):
     # Exclude system fields that may not appear in metadata
     system_fields = {"id", "createdAt", "updatedAt", "deletedAt", "createdBy", "updatedBy"}
     data_only -= system_fields
+    # Exclude relation join columns: REST data returns the foreign-key id
+    # (e.g. messageThreadId) as a scalar alongside metadata-declared fields.
+    # These are implied by RELATION/MORPH_RELATION fields, not drift.
+    join_columns = set()
+    for f in meta_field_defs:
+        if (f.get("type") or "").upper() in ("RELATION", "MORPH_RELATION"):
+            settings = f.get("settings") or {}
+            join_columns.add(settings.get("joinColumnName") or f.get("name", "") + "Id")
+    data_only -= join_columns
     if data_only:
         drift.append(
             f"Fields in REST data but not in metadata: {', '.join(f'`{n}`' for n in sorted(data_only))}"
@@ -545,7 +578,7 @@ def detect_schema_drift(data_fields, meta_field_defs):
     for n in meta_only:
         fdef = meta_names[n]
         ftype = (fdef.get("type") or "").upper()
-        if ftype != "RELATION":
+        if ftype not in ("RELATION", "MORPH_RELATION"):
             meta_only_non_relation.append(n)
     if meta_only_non_relation:
         drift.append(
@@ -555,6 +588,10 @@ def detect_schema_drift(data_fields, meta_field_defs):
     # Type mismatches between inferred type and metadata type
     for name in data_names & meta_name_set:
         meta_type = (meta_names[name].get("type") or "").upper()
+        # Relation fields appear in REST data as nested objects/arrays whose
+        # shape depends on the depth parameter - not a meaningful mismatch.
+        if meta_type in ("RELATION", "MORPH_RELATION"):
+            continue
         inferred = data_fields[name]["type"]
         # Map metadata types to our inferred types for comparison
         type_map = {
@@ -606,6 +643,7 @@ def render_markdown(
     anomalies,
     schema_drift,
     metadata_available,
+    total_count=None,
 ):
     fields = analysis["fields"] if analysis else {}
     n = analysis["record_count"] if analysis else 0
@@ -626,10 +664,21 @@ def render_markdown(
     if obj_def:
         lines.append(f"| Label | {obj_def.get('labelPlural', 'n/a')} |")
         lines.append(f"| Singular | {obj_def.get('nameSingular', 'n/a')} |")
-        is_custom = obj_def.get("isCustom", False)
-        lines.append(f"| Custom object | {'Yes' if is_custom else 'No (standard)'} |")
+        # Current Twenty versions do not return isCustom via the REST metadata
+        # API (the GraphQL metadata API suggests isSystem instead). Only render
+        # the row when the property is actually present.
+        if obj_def.get("isCustom") is not None:
+            lines.append(f"| Custom object | {'Yes' if obj_def['isCustom'] else 'No (standard)'} |")
+        if obj_def.get("isSystem") is not None:
+            lines.append(f"| System object | {'Yes' if obj_def['isSystem'] else 'No'} |")
 
-    lines.append(f"| Records | {n:,} |")
+    if total_count is not None and total_count > n:
+        lines.append(
+            f"| Records | {n:,} analyzed of {total_count:,} total "
+            f"(PARTIAL SAMPLE - capped by --max-records) |"
+        )
+    else:
+        lines.append(f"| Records | {n:,} |")
     total_fields = len(meta_field_defs) if meta_field_defs else len(fields)
     lines.append(f"| Fields (metadata) | {len(meta_field_defs) if meta_field_defs else 'n/a'} |")
     lines.append(f"| Fields (in data) | {len(fields)} |")
@@ -637,7 +686,7 @@ def render_markdown(
     lines.append(f"| CURRENCY fields | {', '.join(f'`{c}`' for c in currency_names) or 'none'} |")
     lines.append(f"| Relations | {', '.join(f'`{r}`' for r in relation_names) or 'none'} |")
     lines.append(f"| Data source | REST (`/rest/{object_name}`) |")
-    lines.append(f"| Schema source | {'REST metadata (`/rest/metadata/fields`)' if metadata_available else 'Inferred from data only'} |")
+    lines.append(f"| Schema source | {'REST metadata (`/rest/metadata/objects`)' if metadata_available else 'Inferred from data only'} |")
     lines.append("")
 
     # --- Metadata field definitions ---
@@ -655,19 +704,36 @@ def render_markdown(
                 fdesc = fdesc[:57] + "..."
             lines.append(f"| `{fname}` | {ftype} | {flabel} | {freq} | {fdesc} |")
 
-        # Relation fields from metadata
-        relation_defs = [f for f in meta_field_defs if (f.get("type") or "").upper() == "RELATION"]
+        # Relation fields from metadata (RELATION and MORPH_RELATION)
+        relation_defs = [
+            f for f in meta_field_defs
+            if (f.get("type") or "").upper() in ("RELATION", "MORPH_RELATION")
+        ]
         if relation_defs:
             lines.append("")
             lines.append("### Relation Fields (Metadata)\n")
-            lines.append("| Field | Target object | Relation type |")
-            lines.append("|-------|---------------|---------------|")
+            lines.append("| Field | Kind | Target object | Relation type | Join column |")
+            lines.append("|-------|------|---------------|---------------|-------------|")
             for f in relation_defs:
                 fname = f.get("name", "?")
-                rel_meta = f.get("relationDefinition") or {}
-                target = rel_meta.get("targetObjectMetadata", {}).get("namePlural", "?")
-                rel_type = rel_meta.get("type", rel_meta.get("direction", "?"))
-                lines.append(f"| `{fname}` | `{target}` | {rel_type} |")
+                fkind = (f.get("type") or "?").upper()
+                settings = f.get("settings") or {}
+                # Some Twenty versions expose the target under field.relation
+                # or field.relationDefinition; current versions return neither
+                # via REST metadata (relation is null), leaving only settings
+                # (relationType, joinColumnName) with no target object.
+                rel_meta = f.get("relation") or f.get("relationDefinition") or {}
+                target_meta = rel_meta.get("targetObjectMetadata") or {}
+                target = target_meta.get("nameSingular") or target_meta.get("namePlural")
+                if target:
+                    target_cell = f"`{target}`"
+                elif fkind == "MORPH_RELATION":
+                    target_cell = "(morph: multiple targets)"
+                else:
+                    target_cell = "(not exposed via REST metadata)"
+                rel_type = rel_meta.get("type") or settings.get("relationType", "?")
+                join_col = settings.get("joinColumnName") or ""
+                lines.append(f"| `{fname}` | {fkind} | {target_cell} | {rel_type} | {join_col} |")
         lines.append("")
 
     # --- Field inventory from data ---
@@ -747,6 +813,13 @@ def main():
         "--data-only", action="store_true",
         help="Only fetch record data, skip metadata",
     )
+    parser.add_argument(
+        "--max-records", type=int, default=1000,
+        help="Maximum records to fetch for analysis (default: 1000). Large "
+             "objects (e.g. message, 300k+ rows) would otherwise take the "
+             "better part of an hour and exhaust memory; when the cap is hit "
+             "the report states that analysis covers a partial sample.",
+    )
     args = parser.parse_args()
 
     # Load env
@@ -789,7 +862,12 @@ def main():
         if not args.data_only:
             print("Fetching metadata...", file=sys.stderr)
             meta_objects = fetch_metadata_objects(client, api_key, base_url, timer)
-            meta_fields = fetch_metadata_fields(client, api_key, base_url, timer)
+            # Current Twenty versions return field definitions inline on each
+            # object in /rest/metadata/objects; only fall back to the separate
+            # (paginated) /rest/metadata/fields call when they are absent.
+            meta_fields = []
+            if meta_objects and not any("fields" in o for o in meta_objects):
+                meta_fields = fetch_metadata_fields(client, api_key, base_url, timer)
 
             if meta_objects:
                 obj_def, meta_field_defs = resolve_object_metadata(
@@ -807,6 +885,10 @@ def main():
                         object_name = alt
 
                 if obj_def:
+                    # REST data endpoints are plural-only; use the authoritative
+                    # namePlural so irregular plurals (e.g. opportunity ->
+                    # opportunities) resolve correctly.
+                    object_name = obj_def.get("namePlural") or object_name
                     print(
                         f"  Found: {obj_def.get('labelPlural', object_name)} "
                         f"({len(meta_field_defs)} fields in metadata)",
@@ -822,6 +904,12 @@ def main():
                     )
                     if available:
                         print(f"  Available objects: {', '.join(available)}", file=sys.stderr)
+                        print(
+                            "  Note: /rest/metadata/objects is not exhaustive; objects "
+                            "referenced by others (e.g. messageChannel) may exist without "
+                            "being listed. Cross-check with a GraphQL __schema type scan.",
+                            file=sys.stderr,
+                        )
             else:
                 print("  Could not fetch metadata (may require different permissions)", file=sys.stderr)
 
@@ -837,22 +925,28 @@ def main():
 
         # ----- Phase 2: Record data -----
         print("Fetching records...", file=sys.stderr)
-        records = fetch_all(client, api_key, base_url, object_name, timer)
+        records, total_count = fetch_all(
+            client, api_key, base_url, object_name, timer, max_records=args.max_records
+        )
 
         if records is None:
             alt = object_name + "s" if not object_name.endswith("s") else object_name.rstrip("s")
             print(f"  '{object_name}' not found, trying '{alt}'...", file=sys.stderr)
-            records = fetch_all(client, api_key, base_url, alt, timer)
+            records, total_count = fetch_all(
+                client, api_key, base_url, alt, timer, max_records=args.max_records
+            )
             if records is not None:
                 object_name = alt
 
         if records is None:
+            print(f"\nERROR: Object '{object_name}' not found via REST API.\n", file=sys.stderr)
             if not metadata_available:
-                available = [
+                available = sorted(
                     o.get("namePlural") or o.get("nameSingular") or "?"
                     for o in fetch_metadata_objects(client, api_key, base_url, timer)
-                ]
-            print(f"\nERROR: Object '{object_name}' not found via REST API.\n", file=sys.stderr)
+                )
+                if available:
+                    print(f"  Available objects: {', '.join(available)}", file=sys.stderr)
             if obj_def:
                 # We have metadata but no REST endpoint
                 print("  Object exists in metadata but has no REST data endpoint.", file=sys.stderr)
@@ -866,7 +960,10 @@ def main():
                 return
             sys.exit(1)
 
-        print(f"  Fetched {len(records)} records", file=sys.stderr)
+        fetched_note = f"  Fetched {len(records)} records"
+        if total_count is not None and total_count > len(records):
+            fetched_note += f" (of {total_count:,} total; capped by --max-records)"
+        print(fetched_note, file=sys.stderr)
 
     if not records and not meta_field_defs:
         print(f"# Twenty Object Inspection: `{object_name}`\n")
@@ -888,6 +985,7 @@ def main():
         object_name, obj_def, meta_field_defs,
         records, analysis, currency_info, relation_info,
         anomalies, schema_drift, metadata_available,
+        total_count=total_count,
     )
     print(report)
 
